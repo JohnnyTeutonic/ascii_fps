@@ -49,7 +49,7 @@ struct Bullet {
 
 std::vector<Bullet> bullets;
 const int MAX_BULLETS = 10;
-float bulletSpeed = 10.0f;
+float bulletSpeed = 20.0f;
 
 // Enemies
 struct Enemy {
@@ -61,6 +61,10 @@ struct Enemy {
 
 std::vector<Enemy> enemies;
 
+// Debug counters
+int bulletsFired = 0;
+int activeBullets = 0;
+
 // Platform-specific keyboard input handling
 #ifdef PLATFORM_UNIX
 // Terminal mode settings
@@ -68,17 +72,30 @@ struct termios orig_termios;
 
 // Function to initialize terminal for raw input
 void initTerminal() {
+    // Save original terminal settings
     tcgetattr(STDIN_FILENO, &orig_termios);
+    
+    // Configure terminal for raw input
     struct termios raw = orig_termios;
-    raw.c_lflag &= ~(ECHO | ICANON);
+    raw.c_lflag &= ~(ECHO | ICANON | ISIG); // Disable echo, canonical mode, and signals
+    raw.c_iflag &= ~(IXON | ICRNL);         // Disable software flow control and CR to NL
+    raw.c_oflag &= ~(OPOST);                // Disable output processing
+    raw.c_cc[VMIN] = 0;                     // Return immediately with whatever is available
+    raw.c_cc[VTIME] = 0;                    // No timeout
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
     
     // Set stdin to non-blocking
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
     
-    // Hide cursor
+    // Hide cursor and clear screen
     std::cout << "\033[?25l";
+    std::cout << "\033[2J\033[H";
+    
+    // Print debug message
+    std::cout << "\033[1;32mTerminal initialized for WSL2. Press SPACE to shoot.\033[0m" << std::endl;
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    std::cout << "\033[2J\033[H";
 }
 
 // Function to restore terminal settings
@@ -159,6 +176,15 @@ void shootBullet() {
             bullet.dx = sin(playerA) * bulletSpeed;
             bullet.dy = cos(playerA) * bulletSpeed;
             bullet.active = true;
+            
+            // Debug message for WSL2
+            #ifdef PLATFORM_UNIX
+            std::cout << "\033[1;31mBullet fired!\033[0m" << std::endl;
+            #endif
+            
+            bulletsFired++;
+            activeBullets++;
+            
             break;
         }
     }
@@ -178,6 +204,7 @@ void updateBullets(float elapsedTime) {
             
             if (map[mapY * MAP_WIDTH + mapX] == '#') {
                 bullet.active = false;
+                activeBullets--;
                 continue;
             }
             
@@ -189,6 +216,7 @@ void updateBullets(float elapsedTime) {
                     if (distance < 0.5f) {
                         enemy.alive = false;
                         bullet.active = false;
+                        activeBullets--;
                         break;
                     }
                 }
@@ -197,6 +225,7 @@ void updateBullets(float elapsedTime) {
             // Check if bullet is out of bounds
             if (bullet.x < 0 || bullet.x >= MAP_WIDTH || bullet.y < 0 || bullet.y >= MAP_HEIGHT) {
                 bullet.active = false;
+                activeBullets--;
             }
         }
     }
@@ -314,7 +343,10 @@ void render(wchar_t* screen) {
         }
     }
     
-    // Draw bullets
+    // Draw player on mini-map
+    screen[(int)(playerY + 1) * SCREEN_WIDTH + (SCREEN_WIDTH - MAP_WIDTH - 1) + (int)playerX] = 'P';
+    
+    // Draw bullets last to ensure they appear on top of everything else
     for (const auto& bullet : bullets) {
         if (bullet.active) {
             // Calculate angle to bullet
@@ -334,11 +366,14 @@ void render(wchar_t* screen) {
                 
                 // Calculate bullet position on screen
                 int bulletCenter = (int)((bulletAngle - playerA + playerFOV / 2.0f) / playerFOV * SCREEN_WIDTH);
-                int bulletY = SCREEN_HEIGHT / 2;
                 
-                // Draw bullet
-                if (bulletCenter >= 0 && bulletCenter < SCREEN_WIDTH) {
-                    screen[bulletY * SCREEN_WIDTH + bulletCenter] = '*';
+                // Make bullets more visible by drawing them larger
+                for (int y = SCREEN_HEIGHT / 2 - 1; y <= SCREEN_HEIGHT / 2 + 1; y++) {
+                    for (int x = bulletCenter - 1; x <= bulletCenter + 1; x++) {
+                        if (y >= 0 && y < SCREEN_HEIGHT && x >= 0 && x < SCREEN_WIDTH) {
+                            screen[y * SCREEN_WIDTH + x] = 'O';
+                        }
+                    }
                 }
             }
         }
@@ -356,7 +391,7 @@ void render(wchar_t* screen) {
             aliveEnemies++;
         }
     }
-    ss << "FPS: X | Enemies: " << aliveEnemies;
+    ss << "FPS: X | Enemies: " << aliveEnemies << " | Bullets Fired: " << bulletsFired << " | Active Bullets: " << activeBullets;
     std::string stats = ss.str();
     
     for (size_t i = 0; i < stats.size(); i++) {
@@ -369,9 +404,6 @@ void render(wchar_t* screen) {
             screen[(y + 1) * SCREEN_WIDTH + (SCREEN_WIDTH - MAP_WIDTH - 1) + x] = map[y * MAP_WIDTH + x];
         }
     }
-    
-    // Draw player on mini-map
-    screen[(int)(playerY + 1) * SCREEN_WIDTH + (SCREEN_WIDTH - MAP_WIDTH - 1) + (int)playerX] = 'P';
 }
 #else
 // Unix-specific rendering function
@@ -494,7 +526,9 @@ void render() {
         }
     }
     
-    // Draw bullets
+    // Player will be drawn on mini-map later
+    
+    // Draw bullets last to ensure they appear on top of everything else
     for (const auto& bullet : bullets) {
         if (bullet.active) {
             // Calculate angle to bullet
@@ -514,11 +548,21 @@ void render() {
                 
                 // Calculate bullet position on screen
                 int bulletCenter = (int)((bulletAngle - playerA + playerFOV / 2.0f) / playerFOV * renderWidth);
-                int bulletY = renderHeight / 2;
                 
-                // Draw bullet
-                if (bulletCenter >= 0 && bulletCenter < renderWidth) {
-                    screenLines[bulletY][bulletCenter] = '*';
+                // Make bullets MUCH more visible by drawing them larger and with color
+                for (int y = renderHeight / 2 - 2; y <= renderHeight / 2 + 2; y++) {
+                    for (int x = bulletCenter - 2; x <= bulletCenter + 2; x++) {
+                        if (y >= 0 && y < renderHeight && x >= 0 && x < renderWidth) {
+                            // Use a larger, more visible character
+                            screenLines[y][x] = '@';
+                        }
+                    }
+                }
+                
+                // Add a debug message at the top of the screen
+                std::string bulletMsg = "BULLET ACTIVE!";
+                for (size_t i = 0; i < bulletMsg.size() && i + 20 < renderWidth; i++) {
+                    screenLines[2][i + 20] = bulletMsg[i];
                 }
             }
         }
@@ -538,7 +582,7 @@ void render() {
             aliveEnemies++;
         }
     }
-    ss << "FPS: X | Enemies: " << aliveEnemies;
+    ss << "FPS: X | Enemies: " << aliveEnemies << " | Bullets Fired: " << bulletsFired << " | Active Bullets: " << activeBullets;
     std::string stats = ss.str();
     
     for (size_t i = 0; i < stats.size() && i < renderWidth; i++) {
@@ -552,13 +596,13 @@ void render() {
             for (int x = 0; x < MAP_WIDTH && mapStartX + x < renderWidth; x++) {
                 screenLines[y + 1][mapStartX + x] = map[y * MAP_WIDTH + x];
             }
-        }
-        
-        // Draw player on mini-map
-        int playerMapY = (int)(playerY) + 1;
-        int playerMapX = mapStartX + (int)playerX;
-        if (playerMapY < renderHeight && playerMapX < renderWidth && playerMapY >= 0 && playerMapX >= 0) {
-            screenLines[playerMapY][playerMapX] = 'P';
+            
+            // Draw player on mini-map
+            int playerMapY = (int)(playerY) + 1;
+            int playerMapX = mapStartX + (int)playerX;
+            if (playerMapY < renderHeight && playerMapX < renderWidth && playerMapY >= 0 && playerMapX >= 0) {
+                screenLines[playerMapY][playerMapX] = 'P';
+            }
         }
     }
     
@@ -686,7 +730,13 @@ int main() {
 #else
         // Handle input for Unix systems
         char c;
-        if (read(STDIN_FILENO, &c, 1) > 0) {
+        
+        // Make input non-blocking for WSL2
+        int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+        fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+        
+        // Check for input
+        while (read(STDIN_FILENO, &c, 1) > 0) {
             switch (c) {
                 case 'w':
                     playerX += sin(playerA) * playerSpeed * fElapsedTime;
@@ -736,6 +786,8 @@ int main() {
                     break;
                 case ' ':
                     shootBullet();
+                    // Add a small delay to prevent multiple shots
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     break;
                 case 27: // ESC
                     gameRunning = false;
