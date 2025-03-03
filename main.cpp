@@ -41,6 +41,9 @@ std::string map;
 // Define trail length as a global constant
 const int BULLET_TRAIL_LENGTH = 5;
 
+// Constant for bullet active message
+const std::string BULLET_ACTIVE_MSG = "!!!!! BULLET ACTIVE !!!!!";
+
 // Bullets
 struct Bullet {
     float x, y;
@@ -206,8 +209,15 @@ void shootBullet() {
                 bullet.trailY[i] = bullet.y - (cos(playerA) * 0.1f * i);
             }
             
-            // Debug message for WSL2
+            // Debug message and screen flash for WSL2
             #ifdef PLATFORM_UNIX
+            // Flash the screen to make the bullet event very noticeable
+            std::cout << "\033[1;41m"; // Bright red background
+            for (int i = 0; i < 5; i++) { // Create 5 blank lines with red background
+                std::cout << "                          " << BULLET_ACTIVE_MSG << "                          " << std::endl;
+            }
+            std::cout << "\033[0m"; // Reset colors
+            
             std::cout << "\033[1;31mBullet fired at position (" << bullet.x << ", " << bullet.y 
                       << ") with direction (" << bullet.dx << ", " << bullet.dy << ")\033[0m" << std::endl;
             #endif
@@ -398,8 +408,8 @@ void render(wchar_t* screen) {
     }
     
     // Draw mini-map with border - make it smaller and position it in the corner
-    int miniMapWidth = std::min(MAP_WIDTH, 16);  // Limit minimap width
-    int miniMapHeight = std::min(MAP_HEIGHT, 16); // Limit minimap height
+    int miniMapWidth = std::min<int>(MAP_WIDTH, 16);  // Limit minimap width
+    int miniMapHeight = std::min<int>(MAP_HEIGHT, 16); // Limit minimap height
     int mapStartX = SCREEN_WIDTH - miniMapWidth - 3;
     
     // Draw map content and border
@@ -460,12 +470,25 @@ void render(wchar_t* screen) {
                 // Calculate bullet position on screen
                 int bulletCenter = (int)((bulletAngle - playerA + playerFOV / 2.0f) / playerFOV * SCREEN_WIDTH);
                 
-                // Draw the main bullet
-                for (int y = SCREEN_HEIGHT / 2 - 3; y <= SCREEN_HEIGHT / 2 + 3; y++) {
-                    for (int x = bulletCenter - 3; x <= bulletCenter + 3; x++) {
+                // Draw the main bullet with MUCH larger, high-contrast characters
+                // Use a large block of characters to create a very visible bullet
+                for (int y = SCREEN_HEIGHT / 2 - 5; y <= SCREEN_HEIGHT / 2 + 5; y++) {
+                    for (int x = bulletCenter - 5; x <= bulletCenter + 5; x++) {
                         if (y >= 0 && y < SCREEN_HEIGHT && x >= 0 && x < SCREEN_WIDTH) {
-                            // Use a larger, more visible character with ANSI color
-                            screen[y * SCREEN_WIDTH + x] = 'O';
+                            // Distance from center to determine what character to use
+                            int distFromCenter = abs(y - SCREEN_HEIGHT / 2) + abs(x - bulletCenter);
+                            
+                            // Create a pattern for the bullet that makes it VERY visible
+                            if (distFromCenter <= 3) {
+                                // Use solid block for center
+                                screen[y * SCREEN_WIDTH + x] = '#';
+                            } else if (distFromCenter <= 5) {
+                                // Use X for outer part
+                                screen[y * SCREEN_WIDTH + x] = 'X';
+                            } else if (distFromCenter <= 8) {
+                                // Use asterisk for outer edge
+                                screen[y * SCREEN_WIDTH + x] = '*';
+                            }
                         }
                     }
                 }
@@ -519,7 +542,7 @@ void render(wchar_t* screen) {
     ss << "FPS: X | Enemies: " << aliveEnemies << " | Bullets Fired: " << bulletsFired << " | Active Bullets: " << activeBullets;
     std::string stats = ss.str();
     
-    for (size_t i = 0; i < stats.size(); i++) {
+    for (size_t i = 0; i < stats.size() && i < SCREEN_WIDTH; i++) {
         screen[i] = stats[i];
     }
 }
@@ -531,8 +554,8 @@ void render() {
     getTerminalSize(termWidth, termHeight);
     
     // Adjust screen dimensions if terminal is too small
-    int renderWidth = std::min(SCREEN_WIDTH, termWidth);
-    int renderHeight = std::min(SCREEN_HEIGHT, termHeight);
+    int renderWidth = std::min<int>(SCREEN_WIDTH, termWidth);
+    int renderHeight = std::min<int>(SCREEN_HEIGHT, termHeight);
     
     // Create a buffer for the screen
     std::vector<std::string> screenLines(renderHeight);
@@ -645,8 +668,8 @@ void render() {
     }
     
     // Draw mini-map with border - make it smaller and position it in the corner
-    int miniMapWidth = std::min(MAP_WIDTH, 16);  // Limit minimap width
-    int miniMapHeight = std::min(MAP_HEIGHT, 16); // Limit minimap height
+    int miniMapWidth = std::min<int>(MAP_WIDTH, 16);  // Limit minimap width
+    int miniMapHeight = std::min<int>(MAP_HEIGHT, 16); // Limit minimap height
     int mapStartX = renderWidth - miniMapWidth - 3;
     
     // Only draw mini-map if there's enough space
@@ -709,12 +732,25 @@ void render() {
                 // Calculate bullet position on screen
                 int bulletCenter = (int)((bulletAngle - playerA + playerFOV / 2.0f) / playerFOV * renderWidth);
                 
-                // Draw the main bullet
-                for (int y = renderHeight / 2 - 3; y <= renderHeight / 2 + 3; y++) {
-                    for (int x = bulletCenter - 3; x <= bulletCenter + 3; x++) {
+                // Draw the main bullet with MUCH larger, high-contrast characters
+                // Use a large block of characters to create a very visible bullet
+                for (int y = renderHeight / 2 - 5; y <= renderHeight / 2 + 5; y++) {
+                    for (int x = bulletCenter - 5; x <= bulletCenter + 5; x++) {
                         if (y >= 0 && y < renderHeight && x >= 0 && x < renderWidth) {
-                            // Use a larger, more visible character with ANSI color
-                            screenLines[y][x] = 'O';
+                            // Distance from center to determine what character to use
+                            int distFromCenter = abs(y - renderHeight / 2) + abs(x - bulletCenter);
+                            
+                            // Create a pattern for the bullet that makes it VERY visible
+                            if (distFromCenter <= 3) {
+                                // Use solid block for center
+                                screenLines[y][x] = '#';
+                            } else if (distFromCenter <= 5) {
+                                // Use X for outer part
+                                screenLines[y][x] = 'X';
+                            } else if (distFromCenter <= 8) {
+                                // Use asterisk for outer edge
+                                screenLines[y][x] = '*';
+                            }
                         }
                     }
                 }
@@ -751,9 +787,8 @@ void render() {
                 }
                 
                 // Add a prominent debug message at the top of the screen
-                std::string bulletMsg = "!!!!! BULLET ACTIVE !!!!!";
-                for (size_t i = 0; i < bulletMsg.size() && i + 20 < renderWidth; i++) {
-                    screenLines[2][i + 20] = bulletMsg[i];
+                for (size_t i = 0; i < BULLET_ACTIVE_MSG.size() && i + 20 < renderWidth; i++) {
+                    screenLines[2][i + 20] = BULLET_ACTIVE_MSG[i];
                 }
             }
         }
@@ -786,11 +821,22 @@ void render() {
         std::string line = "";
         for (int x = 0; x < renderWidth; x++) {
             char c = screenLines[y][x];
-            // Add color to bullets and trails
-            if (c == 'O') {
-                line += "\033[1;31mO\033[0m"; // Bright red bullet
+            // Add color to bullets and trails with enhanced visibility
+            if (c == '#') {
+                line += "\033[1;31m#\033[0m"; // Bright red for bullet center
+            } else if (c == 'X') {
+                line += "\033[1;33mX\033[0m"; // Bright yellow for bullet middle
             } else if (c == '*') {
-                line += "\033[1;33m*\033[0m"; // Yellow trail
+                line += "\033[1;32m*\033[0m"; // Bright green for trail/outer edge
+            } else if (y == 2 && x >= 20 && x < 20 + BULLET_ACTIVE_MSG.size()) {
+                // Special coloring for the bullet message area
+                if (screenLines[y][x] != ' ') {
+                    line += "\033[5;31m"; // Blinking red for bullet message
+                    line += c;
+                    line += "\033[0m";
+                } else {
+                    line += c;
+                }
             } else {
                 line += c;
             }
@@ -853,7 +899,7 @@ int main() {
             }
         }
         
-        if (GetAsyncKeyState('S') &     ) {
+        if (GetAsyncKeyState('S') & 0x8000) {
             playerX -= sin(playerA) * playerSpeed * fElapsedTime;
             playerY -= cos(playerA) * playerSpeed * fElapsedTime;
             
