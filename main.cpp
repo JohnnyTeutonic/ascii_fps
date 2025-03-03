@@ -295,6 +295,24 @@ void updateBullets(float elapsedTime) {
     }
 }
 
+// Function to check if a position is valid and not a wall
+bool isValidPosition(float x, float y) {
+    int mapX = (int)x;
+    int mapY = (int)y;
+    
+    // Check if position is within map bounds
+    if (mapX < 0 || mapX >= MAP_WIDTH || mapY < 0 || mapY >= MAP_HEIGHT) {
+        return false; // Outside map bounds
+    }
+    
+    // Check if position contains a wall
+    if (map[mapY * MAP_WIDTH + mapX] == '#') {
+        return false; // Wall collision
+    }
+    
+    return true; // Valid position
+}
+
 #ifdef PLATFORM_WINDOWS
 // Windows-specific rendering function
 void render(wchar_t* screen) {
@@ -889,46 +907,46 @@ int main() {
 #ifdef PLATFORM_WINDOWS
         // Handle input
         if (GetAsyncKeyState('W') & 0x8000) {
-            playerX += sin(playerA) * playerSpeed * fElapsedTime;
-            playerY += cos(playerA) * playerSpeed * fElapsedTime;
+            float newX = playerX + sin(playerA) * playerSpeed * fElapsedTime;
+            float newY = playerY + cos(playerA) * playerSpeed * fElapsedTime;
             
-            // Collision detection
-            if (map[(int)playerY * MAP_WIDTH + (int)playerX] == '#') {
-                playerX -= sin(playerA) * playerSpeed * fElapsedTime;
-                playerY -= cos(playerA) * playerSpeed * fElapsedTime;
+            // Collision detection with bounds checking
+            if (isValidPosition(newX, newY)) {
+                playerX = newX;
+                playerY = newY;
             }
         }
         
         if (GetAsyncKeyState('S') & 0x8000) {
-            playerX -= sin(playerA) * playerSpeed * fElapsedTime;
-            playerY -= cos(playerA) * playerSpeed * fElapsedTime;
+            float newX = playerX - sin(playerA) * playerSpeed * fElapsedTime;
+            float newY = playerY - cos(playerA) * playerSpeed * fElapsedTime;
             
-            // Collision detection
-            if (map[(int)playerY * MAP_WIDTH + (int)playerX] == '#') {
-                playerX += sin(playerA) * playerSpeed * fElapsedTime;
-                playerY += cos(playerA) * playerSpeed * fElapsedTime;
+            // Collision detection with bounds checking
+            if (isValidPosition(newX, newY)) {
+                playerX = newX;
+                playerY = newY;
             }
         }
         
         if (GetAsyncKeyState('A') & 0x8000) {
-            playerX -= cos(playerA) * playerSpeed * fElapsedTime;
-            playerY += sin(playerA) * playerSpeed * fElapsedTime;
+            float newX = playerX - cos(playerA) * playerSpeed * fElapsedTime;
+            float newY = playerY + sin(playerA) * playerSpeed * fElapsedTime;
             
-            // Collision detection
-            if (map[(int)playerY * MAP_WIDTH + (int)playerX] == '#') {
-                playerX += cos(playerA) * playerSpeed * fElapsedTime;
-                playerY -= sin(playerA) * playerSpeed * fElapsedTime;
+            // Collision detection with bounds checking
+            if (isValidPosition(newX, newY)) {
+                playerX = newX;
+                playerY = newY;
             }
         }
         
         if (GetAsyncKeyState('D') & 0x8000) {
-            playerX += cos(playerA) * playerSpeed * fElapsedTime;
-            playerY -= sin(playerA) * playerSpeed * fElapsedTime;
+            float newX = playerX + cos(playerA) * playerSpeed * fElapsedTime;
+            float newY = playerY - sin(playerA) * playerSpeed * fElapsedTime;
             
-            // Collision detection
-            if (map[(int)playerY * MAP_WIDTH + (int)playerX] == '#') {
-                playerX -= cos(playerA) * playerSpeed * fElapsedTime;
-                playerY += sin(playerA) * playerSpeed * fElapsedTime;
+            // Collision detection with bounds checking
+            if (isValidPosition(newX, newY)) {
+                playerX = newX;
+                playerY = newY;
             }
         }
         
@@ -956,53 +974,63 @@ int main() {
         }
 #else
         // Handle input for Unix systems
-        char c;
+        char c = 0;  // Initialize to avoid undefined behavior
         
-        // Make input non-blocking for WSL2
+        // Make input non-blocking for Unix/WSL2
         int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
-        fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+        if (flags != -1) {
+            fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+        }
         
         // Check for input
         while (read(STDIN_FILENO, &c, 1) > 0) {
             switch (c) {
                 case 'w':
-                    playerX += sin(playerA) * playerSpeed * fElapsedTime;
-                    playerY += cos(playerA) * playerSpeed * fElapsedTime;
-                    
-                    // Collision detection
-                    if (map[(int)playerY * MAP_WIDTH + (int)playerX] == '#') {
-                        playerX -= sin(playerA) * playerSpeed * fElapsedTime;
-                        playerY -= cos(playerA) * playerSpeed * fElapsedTime;
+                    {
+                        float newX = playerX + sin(playerA) * playerSpeed * fElapsedTime;
+                        float newY = playerY + cos(playerA) * playerSpeed * fElapsedTime;
+                        
+                        // Collision detection with bounds checking
+                        if (isValidPosition(newX, newY)) {
+                            playerX = newX;
+                            playerY = newY;
+                        }
                     }
                     break;
                 case 's':
-                    playerX -= sin(playerA) * playerSpeed * fElapsedTime;
-                    playerY -= cos(playerA) * playerSpeed * fElapsedTime;
-                    
-                    // Collision detection
-                    if (map[(int)playerY * MAP_WIDTH + (int)playerX] == '#') {
-                        playerX += sin(playerA) * playerSpeed * fElapsedTime;
-                        playerY += cos(playerA) * playerSpeed * fElapsedTime;
+                    {
+                        float newX = playerX - sin(playerA) * playerSpeed * fElapsedTime;
+                        float newY = playerY - cos(playerA) * playerSpeed * fElapsedTime;
+                        
+                        // Collision detection with bounds checking
+                        if (isValidPosition(newX, newY)) {
+                            playerX = newX;
+                            playerY = newY;
+                        }
                     }
                     break;
                 case 'a':
-                    playerX -= cos(playerA) * playerSpeed * fElapsedTime;
-                    playerY += sin(playerA) * playerSpeed * fElapsedTime;
-                    
-                    // Collision detection
-                    if (map[(int)playerY * MAP_WIDTH + (int)playerX] == '#') {
-                        playerX += cos(playerA) * playerSpeed * fElapsedTime;
-                        playerY -= sin(playerA) * playerSpeed * fElapsedTime;
+                    {
+                        float newX = playerX - cos(playerA) * playerSpeed * fElapsedTime;
+                        float newY = playerY + sin(playerA) * playerSpeed * fElapsedTime;
+                        
+                        // Collision detection with bounds checking
+                        if (isValidPosition(newX, newY)) {
+                            playerX = newX;
+                            playerY = newY;
+                        }
                     }
                     break;
                 case 'd':
-                    playerX += cos(playerA) * playerSpeed * fElapsedTime;
-                    playerY -= sin(playerA) * playerSpeed * fElapsedTime;
-                    
-                    // Collision detection
-                    if (map[(int)playerY * MAP_WIDTH + (int)playerX] == '#') {
-                        playerX -= cos(playerA) * playerSpeed * fElapsedTime;
-                        playerY += sin(playerA) * playerSpeed * fElapsedTime;
+                    {
+                        float newX = playerX + cos(playerA) * playerSpeed * fElapsedTime;
+                        float newY = playerY - sin(playerA) * playerSpeed * fElapsedTime;
+                        
+                        // Collision detection with bounds checking
+                        if (isValidPosition(newX, newY)) {
+                            playerX = newX;
+                            playerY = newY;
+                        }
                     }
                     break;
                 case 'q': // Left arrow substitute
@@ -1016,12 +1044,16 @@ int main() {
                     // Add a small delay to prevent multiple shots
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     break;
-                case 27: // ESC
-                    gameRunning = false;
+                default:
                     break;
             }
         }
-#endif
+        
+        // Handle ESC key separately
+        if (c == 27) {
+            gameRunning = false;
+        }
+#endif  // Close the platform-specific input handling block
         
         // Update bullets
         updateBullets(fElapsedTime);
