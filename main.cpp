@@ -38,18 +38,31 @@ const int MAP_HEIGHT = 16;
 // Game map (1 = wall, 0 = empty space)
 std::string map;
 
+// Define trail length as a global constant
+const int BULLET_TRAIL_LENGTH = 5;
+
 // Bullets
 struct Bullet {
     float x, y;
     float dx, dy;
     bool active;
     
-    Bullet() : x(0), y(0), dx(0), dy(0), active(false) {}
+    // Add trail positions to make bullets more visible
+    float trailX[BULLET_TRAIL_LENGTH];
+    float trailY[BULLET_TRAIL_LENGTH];
+    
+    Bullet() : x(0), y(0), dx(0), dy(0), active(false) {
+        // Initialize trail positions
+        for (int i = 0; i < BULLET_TRAIL_LENGTH; i++) {
+            trailX[i] = 0;
+            trailY[i] = 0;
+        }
+    }
 };
 
 std::vector<Bullet> bullets;
 const int MAX_BULLETS = 10;
-float bulletSpeed = 20.0f;
+float bulletSpeed = 5.0f; // Reduced to make bullets more visible
 
 // Enemies
 struct Enemy {
@@ -169,6 +182,15 @@ void initGame() {
 
 // Function to shoot a bullet
 void shootBullet() {
+    // First check if we have reached the maximum number of bullets
+    if (activeBullets >= MAX_BULLETS) {
+        // Debug message for WSL2
+        #ifdef PLATFORM_UNIX
+        std::cout << "\033[1;31mMax bullets reached!\033[0m" << std::endl;
+        #endif
+        return;
+    }
+    
     for (auto& bullet : bullets) {
         if (!bullet.active) {
             bullet.x = playerX;
@@ -177,9 +199,17 @@ void shootBullet() {
             bullet.dy = cos(playerA) * bulletSpeed;
             bullet.active = true;
             
+            // Initialize all trail positions to create a visible initial trail
+            for (int i = 0; i < BULLET_TRAIL_LENGTH; i++) {
+                // Offset slightly to create an immediate visible trail
+                bullet.trailX[i] = bullet.x - (sin(playerA) * 0.1f * i);
+                bullet.trailY[i] = bullet.y - (cos(playerA) * 0.1f * i);
+            }
+            
             // Debug message for WSL2
             #ifdef PLATFORM_UNIX
-            std::cout << "\033[1;31mBullet fired!\033[0m" << std::endl;
+            std::cout << "\033[1;31mBullet fired at position (" << bullet.x << ", " << bullet.y 
+                      << ") with direction (" << bullet.dx << ", " << bullet.dy << ")\033[0m" << std::endl;
             #endif
             
             bulletsFired++;
@@ -192,8 +222,30 @@ void shootBullet() {
 
 // Function to update bullets
 void updateBullets(float elapsedTime) {
+    // Debug output for WSL2
+    #ifdef PLATFORM_UNIX
+    if (activeBullets > 0) {
+        std::cout << "\033[1;31mUpdating " << activeBullets << " active bullets\033[0m" << std::endl;
+    }
+    #endif
+    
     for (auto& bullet : bullets) {
         if (bullet.active) {
+            // Debug output for WSL2
+            #ifdef PLATFORM_UNIX
+            std::cout << "\033[1;33mBullet position: (" << bullet.x << ", " << bullet.y << ")\033[0m" << std::endl;
+            #endif
+            
+            // Update trail positions first (shift all positions)
+            for (int i = BULLET_TRAIL_LENGTH - 1; i > 0; i--) {
+                bullet.trailX[i] = bullet.trailX[i-1];
+                bullet.trailY[i] = bullet.trailY[i-1];
+            }
+            
+            // Store current position as first trail position
+            bullet.trailX[0] = bullet.x;
+            bullet.trailY[0] = bullet.y;
+            
             // Update position
             bullet.x += bullet.dx * elapsedTime;
             bullet.y += bullet.dy * elapsedTime;
@@ -202,6 +254,14 @@ void updateBullets(float elapsedTime) {
             int mapX = static_cast<int>(bullet.x);
             int mapY = static_cast<int>(bullet.y);
             
+            // Make sure we're in bounds
+            if (mapX < 0 || mapX >= MAP_WIDTH || mapY < 0 || mapY >= MAP_HEIGHT) {
+                bullet.active = false;
+                activeBullets--;
+                continue;
+            }
+            
+            // Check for wall collision
             if (map[mapY * MAP_WIDTH + mapX] == '#') {
                 bullet.active = false;
                 activeBullets--;
@@ -220,12 +280,6 @@ void updateBullets(float elapsedTime) {
                         break;
                     }
                 }
-            }
-            
-            // Check if bullet is out of bounds
-            if (bullet.x < 0 || bullet.x >= MAP_WIDTH || bullet.y < 0 || bullet.y >= MAP_HEIGHT) {
-                bullet.active = false;
-                activeBullets--;
             }
         }
     }
@@ -406,11 +460,43 @@ void render(wchar_t* screen) {
                 // Calculate bullet position on screen
                 int bulletCenter = (int)((bulletAngle - playerA + playerFOV / 2.0f) / playerFOV * SCREEN_WIDTH);
                 
-                // Make bullets more visible by drawing them larger
-                for (int y = SCREEN_HEIGHT / 2 - 1; y <= SCREEN_HEIGHT / 2 + 1; y++) {
-                    for (int x = bulletCenter - 1; x <= bulletCenter + 1; x++) {
+                // Draw the main bullet
+                for (int y = SCREEN_HEIGHT / 2 - 3; y <= SCREEN_HEIGHT / 2 + 3; y++) {
+                    for (int x = bulletCenter - 3; x <= bulletCenter + 3; x++) {
                         if (y >= 0 && y < SCREEN_HEIGHT && x >= 0 && x < SCREEN_WIDTH) {
+                            // Use a larger, more visible character with ANSI color
                             screen[y * SCREEN_WIDTH + x] = 'O';
+                        }
+                    }
+                }
+                
+                // Draw the bullet trail
+                for (int i = 0; i < BULLET_TRAIL_LENGTH; i++) {
+                    // Skip the first position as it's already drawn as the main bullet
+                    if (i == 0) continue;
+                    
+                    // Calculate trail position on screen
+                    float trailAngle = atan2(bullet.trailY[i] - playerY, bullet.trailX[i] - playerX);
+                    
+                    // Adjust angle to player's perspective
+                    while (trailAngle - playerA > 3.14159f) trailAngle -= 2.0f * 3.14159f;
+                    while (trailAngle - playerA < -3.14159f) trailAngle += 2.0f * 3.14159f;
+                    
+                    // Check if trail is in field of view
+                    bool trailInFOV = fabs(trailAngle - playerA) < playerFOV / 2.0f;
+                    
+                    if (trailInFOV) {
+                        // Calculate trail position on screen
+                        int trailCenter = (int)((trailAngle - playerA + playerFOV / 2.0f) / playerFOV * SCREEN_WIDTH);
+                        
+                        // Draw trail segment (smaller than the main bullet)
+                        for (int y = SCREEN_HEIGHT / 2 - 1; y <= SCREEN_HEIGHT / 2 + 1; y++) {
+                            for (int x = trailCenter - 1; x <= trailCenter + 1; x++) {
+                                if (y >= 0 && y < SCREEN_HEIGHT && x >= 0 && x < SCREEN_WIDTH) {
+                                    // Use a different character for the trail
+                                    screen[y * SCREEN_WIDTH + x] = '*';
+                                }
+                            }
                         }
                     }
                 }
@@ -623,18 +709,49 @@ void render() {
                 // Calculate bullet position on screen
                 int bulletCenter = (int)((bulletAngle - playerA + playerFOV / 2.0f) / playerFOV * renderWidth);
                 
-                // Make bullets MUCH more visible by drawing them larger and with color
-                for (int y = renderHeight / 2 - 2; y <= renderHeight / 2 + 2; y++) {
-                    for (int x = bulletCenter - 2; x <= bulletCenter + 2; x++) {
+                // Draw the main bullet
+                for (int y = renderHeight / 2 - 3; y <= renderHeight / 2 + 3; y++) {
+                    for (int x = bulletCenter - 3; x <= bulletCenter + 3; x++) {
                         if (y >= 0 && y < renderHeight && x >= 0 && x < renderWidth) {
-                            // Use a larger, more visible character
-                            screenLines[y][x] = '@';
+                            // Use a larger, more visible character with ANSI color
+                            screenLines[y][x] = 'O';
                         }
                     }
                 }
                 
-                // Add a debug message at the top of the screen
-                std::string bulletMsg = "BULLET ACTIVE!";
+                // Draw the bullet trail
+                for (int i = 0; i < BULLET_TRAIL_LENGTH; i++) {
+                    // Skip the first position as it's already drawn as the main bullet
+                    if (i == 0) continue;
+                    
+                    // Calculate trail position on screen
+                    float trailAngle = atan2(bullet.trailY[i] - playerY, bullet.trailX[i] - playerX);
+                    
+                    // Adjust angle to player's perspective
+                    while (trailAngle - playerA > 3.14159f) trailAngle -= 2.0f * 3.14159f;
+                    while (trailAngle - playerA < -3.14159f) trailAngle += 2.0f * 3.14159f;
+                    
+                    // Check if trail is in field of view
+                    bool trailInFOV = fabs(trailAngle - playerA) < playerFOV / 2.0f;
+                    
+                    if (trailInFOV) {
+                        // Calculate trail position on screen
+                        int trailCenter = (int)((trailAngle - playerA + playerFOV / 2.0f) / playerFOV * renderWidth);
+                        
+                        // Draw trail segment (smaller than the main bullet)
+                        for (int y = renderHeight / 2 - 1; y <= renderHeight / 2 + 1; y++) {
+                            for (int x = trailCenter - 1; x <= trailCenter + 1; x++) {
+                                if (y >= 0 && y < renderHeight && x >= 0 && x < renderWidth) {
+                                    // Use a different character for the trail
+                                    screenLines[y][x] = '*';
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Add a prominent debug message at the top of the screen
+                std::string bulletMsg = "!!!!! BULLET ACTIVE !!!!!";
                 for (size_t i = 0; i < bulletMsg.size() && i + 20 < renderWidth; i++) {
                     screenLines[2][i + 20] = bulletMsg[i];
                 }
@@ -663,16 +780,23 @@ void render() {
         screenLines[0][i] = stats[i];
     }
     
-    // Clear screen and render
+    // Draw screen
     clearScreen();
-    
-    // Output the screen buffer
     for (int y = 0; y < renderHeight; y++) {
-        std::cout << screenLines[y] << std::endl;
+        std::string line = "";
+        for (int x = 0; x < renderWidth; x++) {
+            char c = screenLines[y][x];
+            // Add color to bullets and trails
+            if (c == 'O') {
+                line += "\033[1;31mO\033[0m"; // Bright red bullet
+            } else if (c == '*') {
+                line += "\033[1;33m*\033[0m"; // Yellow trail
+            } else {
+                line += c;
+            }
+        }
+        std::cout << line << std::endl;
     }
-    
-    // Flush output to ensure it's displayed immediately
-    std::cout.flush();
 }
 #endif
 
@@ -729,7 +853,7 @@ int main() {
             }
         }
         
-        if (GetAsyncKeyState('S') & 0x8000) {
+        if (GetAsyncKeyState('S') &     ) {
             playerX -= sin(playerA) * playerSpeed * fElapsedTime;
             playerY -= cos(playerA) * playerSpeed * fElapsedTime;
             
