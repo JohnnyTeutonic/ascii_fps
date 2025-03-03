@@ -343,8 +343,47 @@ void render(wchar_t* screen) {
         }
     }
     
-    // Draw player on mini-map
-    screen[(int)(playerY + 1) * SCREEN_WIDTH + (SCREEN_WIDTH - MAP_WIDTH - 1) + (int)playerX] = 'P';
+    // Draw mini-map with border - make it smaller and position it in the corner
+    int miniMapWidth = std::min(MAP_WIDTH, 16);  // Limit minimap width
+    int miniMapHeight = std::min(MAP_HEIGHT, 16); // Limit minimap height
+    int mapStartX = SCREEN_WIDTH - miniMapWidth - 3;
+    
+    // Draw map content and border
+    for (int y = 0; y <= miniMapHeight + 1; y++) {
+        for (int x = 0; x <= miniMapWidth + 1; x++) {
+            int screenX = mapStartX + x - 1;
+            int screenIndex = y * SCREEN_WIDTH + screenX;
+            
+            // Check if we're within screen bounds
+            if (screenIndex >= 0 && screenIndex < SCREEN_WIDTH * SCREEN_HEIGHT) {
+                if (y == 0 || y == miniMapHeight + 1 || x == 0 || x == miniMapWidth + 1) {
+                    // Draw border
+                    screen[screenIndex] = '+';
+                } else if (y > 0 && y <= miniMapHeight && x > 0 && x <= miniMapWidth) {
+                    // Draw map content - scale if needed
+                    int mapY = (y - 1) * MAP_HEIGHT / miniMapHeight;
+                    int mapX = (x - 1) * MAP_WIDTH / miniMapWidth;
+                    screen[screenIndex] = map[mapY * MAP_WIDTH + mapX];
+                }
+            }
+        }
+    }
+    
+    // Draw player on mini-map - adjust for scaling
+    int playerMapY = (playerY * miniMapHeight / MAP_HEIGHT) + 1;
+    int playerMapX = (playerX * miniMapWidth / MAP_WIDTH);
+    int playerScreenX = mapStartX + playerMapX;
+    int playerScreenIndex = playerMapY * SCREEN_WIDTH + playerScreenX;
+    
+    if (playerScreenIndex >= 0 && playerScreenIndex < SCREEN_WIDTH * SCREEN_HEIGHT) {
+        screen[playerScreenIndex] = 'P';
+    }
+    
+    // Add a label for the mini-map
+    std::string mapLabel = "MAP";
+    for (size_t i = 0; i < mapLabel.size() && (mapStartX + i) < SCREEN_WIDTH; i++) {
+        screen[0 * SCREEN_WIDTH + (mapStartX + i)] = mapLabel[i];
+    }
     
     // Draw bullets last to ensure they appear on top of everything else
     for (const auto& bullet : bullets) {
@@ -396,13 +435,6 @@ void render(wchar_t* screen) {
     
     for (size_t i = 0; i < stats.size(); i++) {
         screen[i] = stats[i];
-    }
-    
-    // Draw mini-map
-    for (int y = 0; y < MAP_HEIGHT; y++) {
-        for (int x = 0; x < MAP_WIDTH; x++) {
-            screen[(y + 1) * SCREEN_WIDTH + (SCREEN_WIDTH - MAP_WIDTH - 1) + x] = map[y * MAP_WIDTH + x];
-        }
     }
 }
 #else
@@ -526,7 +558,49 @@ void render() {
         }
     }
     
-    // Player will be drawn on mini-map later
+    // Draw mini-map with border - make it smaller and position it in the corner
+    int miniMapWidth = std::min(MAP_WIDTH, 16);  // Limit minimap width
+    int miniMapHeight = std::min(MAP_HEIGHT, 16); // Limit minimap height
+    int mapStartX = renderWidth - miniMapWidth - 3;
+    
+    // Only draw mini-map if there's enough space
+    if (mapStartX > renderWidth / 2 && miniMapHeight + 2 < renderHeight) {
+        // Draw a border around the mini-map
+        for (int y = 0; y <= miniMapHeight + 1; y++) {
+            for (int x = 0; x <= miniMapWidth + 1; x++) {
+                // Calculate position in screen buffer
+                int screenX = mapStartX + x - 1;
+                
+                // Check if we're within screen bounds
+                if (screenX >= 0 && screenX < renderWidth && y < renderHeight) {
+                    if (y == 0 || y == miniMapHeight + 1 || x == 0 || x == miniMapWidth + 1) {
+                        // Draw border
+                        screenLines[y][screenX] = '+';
+                    } else if (y > 0 && y <= miniMapHeight && x > 0 && x <= miniMapWidth) {
+                        // Draw map content - scale if needed
+                        int mapY = (y - 1) * MAP_HEIGHT / miniMapHeight;
+                        int mapX = (x - 1) * MAP_WIDTH / miniMapWidth;
+                        screenLines[y][screenX] = map[mapY * MAP_WIDTH + mapX];
+                    }
+                }
+            }
+        }
+        
+        // Draw player on mini-map - adjust for scaling
+        int playerMapY = (playerY * miniMapHeight / MAP_HEIGHT) + 1;
+        int playerMapX = mapStartX + (playerX * miniMapWidth / MAP_WIDTH);
+        
+        if (playerMapY >= 0 && playerMapY < renderHeight && 
+            playerMapX >= 0 && playerMapX < renderWidth) {
+            screenLines[playerMapY][playerMapX] = 'P';
+        }
+        
+        // Add a label for the mini-map
+        std::string mapLabel = "MAP";
+        for (size_t i = 0; i < mapLabel.size() && (mapStartX + i) < renderWidth; i++) {
+            screenLines[0][mapStartX + i] = mapLabel[i];
+        }
+    }
     
     // Draw bullets last to ensure they appear on top of everything else
     for (const auto& bullet : bullets) {
@@ -587,23 +661,6 @@ void render() {
     
     for (size_t i = 0; i < stats.size() && i < renderWidth; i++) {
         screenLines[0][i] = stats[i];
-    }
-    
-    // Draw mini-map if there's enough space
-    int mapStartX = renderWidth - MAP_WIDTH - 1;
-    if (mapStartX > 0 && MAP_HEIGHT + 1 < renderHeight) {
-        for (int y = 0; y < MAP_HEIGHT && y + 1 < renderHeight; y++) {
-            for (int x = 0; x < MAP_WIDTH && mapStartX + x < renderWidth; x++) {
-                screenLines[y + 1][mapStartX + x] = map[y * MAP_WIDTH + x];
-            }
-            
-            // Draw player on mini-map
-            int playerMapY = (int)(playerY) + 1;
-            int playerMapX = mapStartX + (int)playerX;
-            if (playerMapY < renderHeight && playerMapX < renderWidth && playerMapY >= 0 && playerMapX >= 0) {
-                screenLines[playerMapY][playerMapX] = 'P';
-            }
-        }
     }
     
     // Clear screen and render
